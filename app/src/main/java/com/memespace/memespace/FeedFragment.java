@@ -3,6 +3,7 @@ package com.memespace.memespace;
 import android.os.Bundle;
 import android.support.annotation.NonNull;
 import android.support.v4.app.Fragment;
+import android.support.v4.view.ViewCompat;
 import android.support.v7.widget.LinearLayoutManager;
 import android.support.v7.widget.RecyclerView;
 import android.view.LayoutInflater;
@@ -14,42 +15,46 @@ import android.widget.TextView;
 import com.bumptech.glide.Glide;
 import com.bumptech.glide.load.resource.drawable.DrawableTransitionOptions;
 
-import java.util.Arrays;
+import java.time.Instant;
+import java.util.Comparator;
+import java.util.Date;
 import java.util.List;
+import java.util.Locale;
 
 /**
  * A fragment for the main feed
  */
 public class FeedFragment extends Fragment {
 
+    DatabaseHelper db;
+
     public FeedFragment() {
+        db = new FirebaseHelper();
     }
 
     public static FeedFragment newInstance() {
         FeedFragment fragment = new FeedFragment();
         Bundle args = new Bundle();
-//        args.putInt(ARG_SECTION_NUMBER, sectionNumber);
         fragment.setArguments(args);
         return fragment;
     }
 
     @Override
-    public View onCreateView(LayoutInflater inflater, ViewGroup container,
+    public View onCreateView(@NonNull LayoutInflater inflater, ViewGroup container,
                              Bundle savedInstanceState) {
         View rootView = inflater.inflate(R.layout.fragment_main, container, false);
-        RecyclerView feedRecycler = rootView.findViewById(R.id.feed_recycler);
+        final RecyclerView feedRecycler = rootView.findViewById(R.id.feed_recycler);
+        // allow inertial scrolling from NestedScrollView instead of RecyclerView scrolling
+        // this has to be done programmatically to support API < 21
+        ViewCompat.setNestedScrollingEnabled(feedRecycler, false);
 
-        List<String> urls = Arrays.asList(
-                "https://storage.googleapis.com/memes2018/1542456981909alphameme.jpg",
-                "https://storage.googleapis.com/memes2018/1542457080605dankness.jpg",
-                "https://storage.googleapis.com/memes2018/154246604502944944688_461581084246475_6183301971798130688_n.jpg",
-                "https://storage.googleapis.com/memes2018/1542572527562your-meme.png");
-        List<String> captions = Arrays.asList(
-                "The first meme ever invented",
-                "Wow would you look at this",
-                "How could they get any better?",
-                "Good stuff");
-        feedRecycler.setAdapter(new MemeRecyclerAdapter(urls, captions));
+        db.getAllMemes(new DatabaseHelper.Callback() {
+            @Override
+            public void onMemesRetrieved(List<Meme> memes) {
+                feedRecycler.setAdapter(new MemeRecyclerAdapter(memes));
+            }
+        });
+
         feedRecycler.setLayoutManager(new LinearLayoutManager(getContext()));
 
 
@@ -58,12 +63,10 @@ public class FeedFragment extends Fragment {
 
     public class MemeRecyclerAdapter extends RecyclerView.Adapter<MemeRecyclerAdapter.MemeViewHolder> {
 
-        List<String> urls;
-        List<String> captions;
+        private List<Meme> memes;
 
-        public MemeRecyclerAdapter(List<String> urls, List<String> captions) {
-            this.urls = urls;
-            this.captions = captions;
+        public MemeRecyclerAdapter(List<Meme> memes) {
+            this.memes = memes;
         }
 
         @NonNull
@@ -76,9 +79,12 @@ public class FeedFragment extends Fragment {
 
         @Override
         public void onBindViewHolder(@NonNull MemeViewHolder holder, int position) {
-            holder.caption.setText(captions.get(position));
+            Meme meme = memes.get(position);
+            holder.caption.setText(meme.getName());
+            holder.likes.setText(String.format(Locale.getDefault(),"%d likes", meme.getRating()));
+            holder.username.setText(meme.getUser() == null ? "anonymous" : meme.getUser());
             Glide.with(getContext())
-                    .load(urls.get(position))
+                    .load(meme.getUrl())
                     .transition(DrawableTransitionOptions.withCrossFade())
 //                    .apply(new RequestOptions().placeholder())
                     .into(holder.imageView);
@@ -86,18 +92,22 @@ public class FeedFragment extends Fragment {
 
         @Override
         public int getItemCount() {
-            return urls.size();
+            return memes.size();
         }
 
         public class MemeViewHolder extends RecyclerView.ViewHolder {
 
             ImageView imageView;
             TextView caption;
+            TextView likes;
+            TextView username;
 
             public MemeViewHolder(View v) {
                 super(v);
                 imageView = v.findViewById(R.id.meme_image);
                 caption = v.findViewById(R.id.meme_caption);
+                likes = v.findViewById(R.id.meme_likes);
+                username = v.findViewById(R.id.meme_username);
             }
         }
     }
